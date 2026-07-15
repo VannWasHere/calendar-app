@@ -7,6 +7,7 @@ using RoomBook.Components.UI;
 using RoomBook.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+var seedOnly = args.Contains("--seed", StringComparer.OrdinalIgnoreCase);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -72,7 +73,8 @@ using (var scope = app.Services.CreateScope())
     var services = scope.ServiceProvider;
     var db = services.GetRequiredService<ApplicationDbContext>();
     await db.Database.MigrateAsync();
-    await SeedData.InitializeAsync(services, builder.Configuration);
+    if (seedOnly) await SeedData.InitializeAsync(services, builder.Configuration);
 }
 
+if (seedOnly) return;
 app.Run();
