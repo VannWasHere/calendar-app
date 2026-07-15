@@ -17,7 +17,6 @@ window.roomBook = {
       root.dataset.ready = '1';
       const scroll = root.querySelector('.scheduler-scroll');
       const startDay = 480, endDay = 1200, ppm = 1.2;
-      scroll.scrollTop = 60;
       scroll.addEventListener('scroll', () => { const heads = root.querySelector('.scheduler-room-heads'); if (heads) heads.scrollLeft = scroll.scrollLeft; });
       let state = null;
       const snap = value => Math.max(startDay, Math.min(endDay, Math.round(value / 15) * 15));

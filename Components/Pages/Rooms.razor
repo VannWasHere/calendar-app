@@ -7,7 +7,6 @@
 <PageTitle>Rooms · RoomBook</PageTitle>
 <PageHeader Title="Rooms" Description="Manage spaces, capacity, and booking availability."><Actions><AuthorizeView Roles="Admin"><Authorized><UiButton OnClick="NewRoom"><i class="bi bi-plus-lg"></i> Add room</UiButton></Authorized></AuthorizeView></Actions></PageHeader>
 
-<div class="metric-grid room-metrics"><UiCard Class="metric-card"><span class="metric-icon violet"><i class="bi bi-door-open"></i></span><div><span>Total rooms</span><strong>@rooms.Count</strong><small>All spaces</small></div></UiCard><UiCard Class="metric-card"><span class="metric-icon green"><i class="bi bi-check-circle"></i></span><div><span>Available</span><strong>@rooms.Count(x => x.IsActive)</strong><small>Open for booking</small></div></UiCard></div>
 <TableShell>
     <Toolbar><div class="ui-toolbar"><SearchInput @bind-Value="search" Placeholder="Search rooms…" /><UiBadge Tone="neutral">@Filtered.Count results</UiBadge></div></Toolbar>
     <ChildContent><thead><tr><th>Room</th><th>Type</th><th>Location</th><th>Capacity</th><th>Status</th><AuthorizeView Roles="Admin"><Authorized><th><span class="sr-only">Actions</span></th></Authorized></AuthorizeView></tr></thead><tbody>

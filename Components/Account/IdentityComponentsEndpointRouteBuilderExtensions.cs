@@ -41,13 +41,8 @@ internal static class IdentityComponentsEndpointRouteBuilderExtensions
             return TypedResults.Challenge(properties, [provider]);
         });
 
-        accountGroup.MapPost("/Logout", async (
-            HttpContext context,
-            [FromServices] SignInManager<ApplicationUser> signInManager) =>
-        {
-            await signInManager.SignOutAsync();
-            context.Response.Redirect("/");
-        });
+        accountGroup.MapPost("/Logout", SignOutAsync).WithOrder(-1);
+        accountGroup.MapPost("/SignOut", SignOutAsync).WithOrder(-1);
 
         accountGroup.MapPost("/PasskeyCreationOptions", async (
             HttpContext context,
@@ -147,5 +142,14 @@ internal static class IdentityComponentsEndpointRouteBuilderExtensions
         });
 
         return accountGroup;
+    }
+
+    private static async Task SignOutAsync(
+        HttpContext context,
+        [FromServices] SignInManager<ApplicationUser> signInManager)
+    {
+        await signInManager.SignOutAsync();
+        context.Response.StatusCode = StatusCodes.Status303SeeOther;
+        context.Response.Headers.Location = "/";
     }
 }
