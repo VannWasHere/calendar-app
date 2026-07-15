@@ -1,10 +1,12 @@
 window.roomBook = {
-  toggleTheme() {
+  toggleTheme(button) {
+    if (!(button instanceof HTMLElement) || button.dataset.themeToggle !== 'true') return;
     const root = document.documentElement;
     const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
     root.dataset.theme = next;
     localStorage.setItem('roomBook.theme', next);
   },
+
   toggleMenu() { document.getElementById('app-sidebar')?.classList.toggle('open'); },
   toggleSidebarCollapse() { document.querySelector('.app-shell')?.classList.toggle('sidebar-collapsed'); },
   command: {

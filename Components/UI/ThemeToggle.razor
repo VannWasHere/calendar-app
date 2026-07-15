@@ -1,3 +1,6 @@
 @inject IJSRuntime JS
-<button class="ui-icon-button" title="Toggle theme" aria-label="Toggle dark mode" @onclick="Toggle"><i class="bi bi-circle-half"></i></button>
-@code { private async Task Toggle() => await JS.InvokeVoidAsync("roomBook.toggleTheme"); }
+<button @ref="toggleButton" type="button" class="ui-icon-button" data-theme-toggle="true" title="Toggle theme" aria-label="Toggle dark mode" @onclick="Toggle"><i class="bi bi-circle-half"></i></button>
+@code {
+    private ElementReference toggleButton;
+    private async Task Toggle() => await JS.InvokeVoidAsync("roomBook.toggleTheme", toggleButton);
+}

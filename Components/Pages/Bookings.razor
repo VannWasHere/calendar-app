@@ -32,7 +32,7 @@
 </TableShell>
 
 <UiDialog Open="editorOpen" Title="@(editor.Id == 0 ? "New booking" : "Edit booking")" Description="Times use 15-minute increments. Conflicts are checked before saving." Size="lg" OnClose="CloseEditor">
-    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
+    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="@editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
 </UiDialog>
 
 <UiDialog Open="deleteOpen" Title="Delete booking?" Description="This action cannot be undone." OnClose="CancelDelete">
