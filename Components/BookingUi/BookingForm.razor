@@ -5,7 +5,7 @@
     <div class="ui-field"><label>Rooms</label><RoomMultiSelect Rooms="Rooms" Values="Model.RoomIds" ValuesChanged="RoomsChanged" /><ValidationMessage For="() => Model.RoomIds" /></div>
     @if (!string.IsNullOrWhiteSpace(conflictWarning)) { <div class="ui-alert destructive" role="alert"><strong><i class="bi bi-exclamation-triangle"></i> Room already booked</strong><span>@conflictWarning</span></div> }
     <div class="ui-field"><label>Description <span>Optional</span></label><InputTextArea @bind-Value="Model.Description" placeholder="Add agenda, call link, or context…" /><ValidationMessage For="() => Model.Description" /></div>
-    @if (!string.IsNullOrWhiteSpace(Error)) { <div class="ui-alert destructive" role="alert"><strong>Couldn’t save booking</strong><span>@Error</span></div> }
+    @if (!string.IsNullOrWhiteSpace(Error)) { <div class="ui-alert destructive" role="alert"><strong>Couldn’t save booking:</strong> <span>@Error</span></div> }
     <div class="ui-form-actions"><UiButton Variant="outline" OnClick="Cancel">Cancel</UiButton><UiButton Type="submit" Loading="Saving" Disabled="@(!string.IsNullOrWhiteSpace(conflictWarning))">@(Model.Id == 0 ? "Create booking" : "Save changes")</UiButton></div>
 </EditForm>
 @code {

@@ -58,7 +58,7 @@ else
 }
 
 <UiDialog Open="editorOpen" Title="@(editor.Id == 0 ? "New booking" : "Edit booking")" Description="Choose rooms, participants, and an exact time." Size="lg" OnClose="CloseEditor">
-    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
+    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="@editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
 </UiDialog>
 
 @code {
