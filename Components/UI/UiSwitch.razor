@@ -1,0 +1,2 @@
+<label class="ui-switch"><input type="checkbox" checked="@Value" @onchange="Changed" /><span></span><div><strong>@Label</strong>@if (!string.IsNullOrWhiteSpace(Description)) { <small>@Description</small> }</div></label>
+@code { [Parameter] public bool Value { get; set; } [Parameter] public EventCallback<bool> ValueChanged { get; set; } [Parameter] public string Label { get; set; } = string.Empty; [Parameter] public string? Description { get; set; } private Task Changed(ChangeEventArgs e) => ValueChanged.InvokeAsync((bool)(e.Value ?? false)); }

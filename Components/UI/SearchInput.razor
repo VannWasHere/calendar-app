@@ -1,0 +1,7 @@
+<label class="ui-search"><i class="bi bi-search"></i><input value="@Value" @oninput="Changed" placeholder="@Placeholder" aria-label="@Placeholder" /></label>
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Search…";
+    private Task Changed(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

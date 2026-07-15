@@ -1,0 +1,38 @@
+﻿@page "/"
+@attribute [Authorize]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+
+<PageTitle>Overview · RoomBook</PageTitle>
+<PageHeader Title="Good morning" Description="Here’s what’s happening across your workspace today.">
+    <Actions><a class="ui-button outline" href="calendar">Open calendar</a><a class="ui-button primary" href="bookings"><i class="bi bi-plus-lg"></i> New booking</a></Actions>
+</PageHeader>
+
+<div class="metric-grid">
+    <UiCard Class="metric-card"><span class="metric-icon violet"><i class="bi bi-door-open"></i></span><div><span>Active rooms</span><strong>@activeRooms</strong><small>Ready to schedule</small></div></UiCard>
+    <UiCard Class="metric-card"><span class="metric-icon blue"><i class="bi bi-calendar3"></i></span><div><span>Today’s bookings</span><strong>@todayBookings</strong><small>@(todayBookings == 0 ? "Your day is clear" : "Across all rooms")</small></div></UiCard>
+    <UiCard Class="metric-card"><span class="metric-icon green"><i class="bi bi-graph-up-arrow"></i></span><div><span>Next 7 days</span><strong>@weekBookings</strong><small>Upcoming reservations</small></div></UiCard>
+    <UiCard Class="metric-card"><span class="metric-icon amber"><i class="bi bi-clock-history"></i></span><div><span>Booked hours</span><strong>@bookedHours.ToString("0.#")</strong><small>This week</small></div></UiCard>
+</div>
+
+<div class="dashboard-grid">
+    <UiCard Class="span-2"><Header><div class="ui-card-title"><div><h2>Today’s schedule</h2><p>Upcoming meetings and room activity.</p></div><a href="calendar">View schedule <i class="bi bi-arrow-right"></i></a></div></Header><ChildContent>
+        @if (today.Count == 0) { <EmptyState Icon="bi-check-circle" Title="All clear today" Description="There are no room bookings scheduled." /> }
+        else { <div class="activity-list">@foreach (var booking in today) { <a class="activity-item" href="bookings"><span class="activity-time">@booking.StartUtc.ToString("HH:mm")</span><span class="activity-line"></span><div><strong>@booking.Title</strong><span>@booking.Room.Name · @booking.StartUtc.ToString("HH:mm")–@booking.EndUtc.ToString("HH:mm")</span></div><UiBadge Tone="accent">@booking.Room.Name</UiBadge></a> }</div> }
+    </ChildContent></UiCard>
+    <UiCard><Header><div class="ui-card-title"><div><h2>Workspace</h2><p>Shortcuts and availability.</p></div></div></Header><ChildContent><div class="quick-action-list"><a href="rooms"><span><i class="bi bi-door-open"></i></span><div><strong>Manage rooms</strong><small>@activeRooms active spaces</small></div><b><i class="bi bi-chevron-right"></i></b></a><a href="users"><span><i class="bi bi-people"></i></span><div><strong>Team access</strong><small>Users and roles</small></div><b><i class="bi bi-chevron-right"></i></b></a><a href="bookings"><span><i class="bi bi-journal-bookmark"></i></span><div><strong>All bookings</strong><small>Search and manage</small></div><b><i class="bi bi-chevron-right"></i></b></a></div></ChildContent></UiCard>
+</div>
+
+@code {
+    private int activeRooms, todayBookings, weekBookings;
+    private double bookedHours;
+    private List<Booking> today = [];
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var start = DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Utc); var end = start.AddDays(1); var weekEnd = start.AddDays(7);
+        activeRooms = await db.Rooms.CountAsync(x => x.IsActive);
+        today = await db.Bookings.AsNoTracking().Include(x => x.Room).Where(x => x.StartUtc < end && x.EndUtc > start).OrderBy(x => x.StartUtc).ToListAsync();
+        todayBookings = today.Count; var week = await db.Bookings.AsNoTracking().Where(x => x.StartUtc < weekEnd && x.EndUtc > start).ToListAsync();
+        weekBookings = week.Count; bookedHours = week.Sum(x => (x.EndUtc - x.StartUtc).TotalHours);
+    }
+}

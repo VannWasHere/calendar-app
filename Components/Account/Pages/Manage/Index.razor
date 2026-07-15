@@ -1,0 +1,94 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using RoomBook.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Profile</PageTitle>
+
+<StatusMessage />
+
+@if (!canEdit)
+{
+    <div class="settings-readonly-note"><i class="bi bi-lock"></i> Your profile is view-only. Contact an administrator to request changes.</div>
+    <div class="settings-field-static"><span>Username</span><strong>@username</strong></div>
+    <div class="settings-field-static"><span>Display name</span><strong>@(user?.DisplayName is { Length: > 0 } name ? name : "Not set")</strong></div>
+    <div class="settings-field-static"><span>Phone number</span><strong>@(string.IsNullOrWhiteSpace(phoneNumber) ? "Not set" : phoneNumber)</strong></div>
+    <div class="settings-field-static"><span>Role</span><strong>@role</strong></div>
+}
+else
+{
+    <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post" class="ui-form">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="ui-form-summary" role="alert" />
+        <div class="ui-field"><label>Username</label><input type="text" value="@username" class="form-control" disabled /></div>
+        <div class="ui-field"><label>Phone number</label><InputText @bind-Value="Input.PhoneNumber" class="form-control" placeholder="Enter your phone number" /><ValidationMessage For="() => Input.PhoneNumber" /></div>
+        <div class="ui-form-actions"><UiButton Type="submit">Save changes</UiButton></div>
+    </EditForm>
+}
+
+@code {
+    private ApplicationUser? user;
+    private string? username;
+    private string? phoneNumber;
+    private string role = "User";
+    private bool canEdit;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        username = await UserManager.GetUserNameAsync(user);
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        role = (await UserManager.GetRolesAsync(user)).FirstOrDefault() ?? "User";
+        canEdit = HttpContext.User.IsInRole("Admin");
+
+        Input.PhoneNumber ??= phoneNumber;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (!canEdit || user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set phone number.", HttpContext);
+                return;
+            }
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+    }
+}

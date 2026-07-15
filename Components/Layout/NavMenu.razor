@@ -1,0 +1,16 @@
+﻿@inject IJSRuntime JS
+<div class="sidebar-brand"><a href="/"><span class="brand-mark">R</span><span><strong>RoomBook</strong><small>Workspace</small></span></a><button class="ui-icon-button sidebar-collapse" title="Collapse sidebar" @onclick="Collapse"><i class="bi bi-chevron-left"></i></button></div>
+<div class="workspace-switcher"><span class="workspace-avatar">AC</span><div><strong>Acme Corp</strong><small>Business workspace</small></div><span><i class="bi bi-chevron-expand"></i></span></div>
+<nav class="sidebar-nav" aria-label="Main navigation">
+    <p>Workspace</p>
+    <NavLink href="" Match="NavLinkMatch.All"><span><i class="bi bi-house"></i></span>Overview</NavLink>
+    <NavLink href="calendar"><span><i class="bi bi-calendar3"></i></span>Calendar</NavLink>
+    <NavLink href="bookings"><span><i class="bi bi-journal-bookmark"></i></span>Bookings</NavLink>
+    <p>Management</p>
+    <NavLink href="rooms"><span><i class="bi bi-door-open"></i></span>Rooms</NavLink>
+    <AuthorizeView Roles="Admin"><Authorized><NavLink href="users"><span><i class="bi bi-people"></i></span>People</NavLink></Authorized></AuthorizeView>
+</nav>
+<div class="sidebar-help"><span><i class="bi bi-question-circle"></i></span><div><strong>Need help?</strong><small>Read the quick guide</small></div></div>
+<div class="sidebar-user"><AuthorizeView><Authorized><UiAvatar Name="@context.User.Identity?.Name" Size="sm" /><div><strong>@context.User.Identity?.Name</strong><a href="Account/Manage">Manage account</a></div><details><summary><i class="bi bi-three-dots"></i></summary><div class="ui-dropdown"><a href="Account/Manage"><i class="bi bi-gear"></i> Settings</a><form action="Account/Logout" method="post"><AntiforgeryToken /><input type="hidden" name="ReturnUrl" value="" /><button type="submit"><i class="bi bi-box-arrow-right"></i> Sign out</button></form></div></details></Authorized><NotAuthorized><a href="Account/Login">Sign in</a></NotAuthorized></AuthorizeView></div>
+
+@code { private async Task Collapse() => await JS.InvokeVoidAsync("roomBook.toggleSidebarCollapse"); }

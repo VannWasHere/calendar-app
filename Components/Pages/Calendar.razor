@@ -1,0 +1,237 @@
+@page "/calendar"
+@attribute [Authorize]
+@implements IAsyncDisposable
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject BookingService BookingService
+@inject AuthenticationStateProvider AuthenticationState
+@inject UserManager<ApplicationUser> UserManager
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>Calendar · RoomBook</PageTitle>
+<PageHeader Title="Schedule" Description="Pick a room to drag and drop, or view every room's schedule for the week.">
+    <Actions>
+        <select class="ui-filter" @bind="filterValue" @bind:after="OnFilterChangedAsync">
+            <option value="all">All rooms</option>
+            @foreach (var type in RoomTypes) { <option value="type:@type">All @type</option> }
+            @foreach (var type in RoomTypes)
+            {
+                <optgroup label="@type">
+                    @foreach (var room in RoomsOfType(type)) { <option value="room:@room.Id">@room.Name</option> }
+                </optgroup>
+            }
+        </select>
+        <div class="ui-segmented"><button @onclick="PreviousWeek"><i class="bi bi-chevron-left"></i></button><button @onclick="ThisWeek">This week</button><button @onclick="NextWeek"><i class="bi bi-chevron-right"></i></button></div>
+        <UiButton OnClick="NewBooking"><i class="bi bi-plus-lg"></i> New booking</UiButton>
+    </Actions>
+</PageHeader>
+
+<div class="calendar-toolbar"><div><strong>@WeekRangeLabel</strong><span>@FilterLabel · @visibleBookingsCount booking@(visibleBookingsCount == 1 ? "" : "s")</span></div><div class="calendar-legend"><span><i class="available"></i>Available</span><span><i class="busy"></i>Booked</span></div></div>
+
+@if (loading) { <UiCard><Skeleton Height="36rem" /></UiCard> }
+else if (rooms.Count == 0) { <UiCard><EmptyState Icon="bi-door-open" Title="No active rooms" Description="Add an active room before scheduling." /></UiCard> }
+else if (SelectedRoom is not null)
+{
+    <div class="scheduler" @ref="schedulerElement">
+        <div class="scheduler-corner">Local time</div>
+        <div class="scheduler-room-heads">@foreach (var day in WeekDays) { <div><span class="room-dot"></span><strong>@day.ToString("ddd")</strong><small>@day.ToString("dd MMM")</small></div> }</div>
+        <div class="scheduler-scroll">
+            <div class="scheduler-times">@foreach (var hour in Hours) { <span style="top:@(HourTop(hour))px">@($"{hour:00}:00")</span> }</div>
+            <div class="scheduler-lanes" style="--room-count:7">
+                @for (var i = 0; i < 7; i++)
+                {
+                    var dayOffset = i;
+                    var day = WeekDays[dayOffset];
+                    <div class="scheduler-lane" data-room-id="@dayOffset">
+                        @foreach (var booking in BookingsForRoomOnDay(SelectedRoom.Id, day))
+                        {
+                            <article class="scheduler-event" data-booking="@booking.Id" data-start="@Minutes(booking.StartUtc)" data-duration="@Duration(booking)" style="top:@Top(booking)px;height:@Height(booking)px" @ondblclick="() => EditBooking(booking)">
+                                <strong>@booking.Title</strong><span>@booking.StartUtc.ToString("HH:mm")–@booking.EndUtc.ToString("HH:mm")</span><small>@ParticipantSummary(booking)</small><button class="resize-handle" aria-label="Resize @booking.Title"></button>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="agenda-week">
+        @foreach (var day in WeekDays)
+        {
+            var dayBookings = FilteredBookings.Where(x => DateOnly.FromDateTime(x.StartUtc) == day).OrderBy(x => x.StartUtc).ToList();
+            <UiCard Class="agenda-day">
+                <Header>
+                    <div class="ui-card-title"><div><h2>@day.ToString("dddd")</h2><p>@day.ToString("dd MMM yyyy")</p></div>
+                        <button class="ui-icon-button" title="New booking" @onclick="() => NewBookingOnDay(day)"><i class="bi bi-plus-lg"></i></button>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (dayBookings.Count == 0) { <p class="ui-cell-subtitle">No bookings.</p> }
+                    else { @foreach (var booking in dayBookings) {
+                        <button type="button" class="agenda-item" @onclick="() => EditBooking(booking)">
+                            <span class="agenda-time">@booking.StartUtc.ToString("HH:mm")–@booking.EndUtc.ToString("HH:mm")</span>
+                            <span class="agenda-title"><strong>@booking.Title</strong><small>@ParticipantSummary(booking)</small></span>
+                            <UiBadge Tone="accent">@booking.Room.Name</UiBadge>
+                        </button>
+                    } }
+                </ChildContent>
+            </UiCard>
+        }
+    </div>
+}
+
+<UiDialog Open="editorOpen" Title="@(editor.Id == 0 ? "New booking" : "Edit booking")" Description="Choose rooms, participants, and an exact time." Size="lg" OnClose="CloseEditor">
+    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
+</UiDialog>
+
+@code {
+    private const int StartMinute = 8 * 60;
+    private const int EndMinute = 20 * 60;
+    private const double PixelsPerMinute = 1.2;
+    private readonly IEnumerable<int> Hours = Enumerable.Range(8, 13);
+    private DateOnly weekStart = StartOfWeek(DateOnly.FromDateTime(DateTime.Today));
+    private List<Room> rooms = [];
+    private List<Booking> bookings = [];
+    private BookingEditorModel editor = new();
+    private ElementReference schedulerElement;
+    private DotNetObjectReference<Calendar>? dotNetRef;
+    private bool loading = true;
+    private bool editorOpen;
+    private bool saving;
+    private bool jsReady;
+    private string? editorError;
+    private string filterValue = "all";
+    private string? currentUserId;
+    private bool isAdmin;
+
+    private List<string> RoomTypes => rooms.Select(x => x.Type).Distinct().OrderBy(x => x).ToList();
+    private List<Room> RoomsOfType(string type) => rooms.Where(x => x.Type == type).OrderBy(x => x.Name).ToList();
+    private Room? SelectedRoom => filterValue.StartsWith("room:") && int.TryParse(filterValue[5..], out var id) ? rooms.FirstOrDefault(x => x.Id == id) : null;
+    private string? SelectedType => filterValue.StartsWith("type:") ? filterValue[5..] : null;
+    private List<DateOnly> WeekDays => Enumerable.Range(0, 7).Select(weekStart.AddDays).ToList();
+    private string WeekRangeLabel => $"{weekStart:dd MMM} – {weekStart.AddDays(6):dd MMM yyyy}";
+    private string FilterLabel => SelectedRoom is not null ? $"{SelectedRoom.Name} · {SelectedRoom.Type}" : SelectedType is not null ? $"All {SelectedType} rooms" : "All rooms";
+
+    private List<Booking> FilteredBookings => bookings.Where(x =>
+        (SelectedRoom is null || x.RoomId == SelectedRoom.Id || x.AdditionalRooms.Any(r => r.RoomId == SelectedRoom.Id)) &&
+        (SelectedType is null || x.Room.Type == SelectedType || x.AdditionalRooms.Any(r => r.Room.Type == SelectedType))).ToList();
+    private int visibleBookingsCount => FilteredBookings.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        currentUserId = UserManager.GetUserId(state.User);
+        isAdmin = state.User.IsInRole("Admin");
+        await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!loading && SelectedRoom is not null && !jsReady)
+        {
+            dotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("roomBook.scheduler.init", schedulerElement, dotNetRef);
+            jsReady = true;
+        }
+    }
+
+    private static DateOnly StartOfWeek(DateOnly date)
+    {
+        var diff = ((int)date.DayOfWeek + 6) % 7;
+        return date.AddDays(-diff);
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rooms = await db.Rooms.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync();
+        var start = DateTime.SpecifyKind(weekStart.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var end = start.AddDays(7);
+        bookings = await db.Bookings.AsNoTracking().AsSplitQuery().Include(x => x.Room).Include(x => x.AdditionalRooms).ThenInclude(x => x.Room).Include(x => x.Participants).ThenInclude(x => x.User).Include(x => x.CreatedBy)
+            .Where(x => x.StartUtc < end && x.EndUtc > start).OrderBy(x => x.StartUtc).ToListAsync();
+        loading = false;
+        jsReady = false;
+    }
+
+    private IEnumerable<Booking> BookingsForRoomOnDay(int roomId, DateOnly day) =>
+        bookings.Where(x => (x.RoomId == roomId || x.AdditionalRooms.Any(r => r.RoomId == roomId)) && DateOnly.FromDateTime(x.StartUtc) == day);
+
+    private static int Minutes(DateTime value) => value.Hour * 60 + value.Minute;
+    private static int Duration(Booking value) => Math.Max(15, (int)(value.EndUtc - value.StartUtc).TotalMinutes);
+    private static double HourTop(int hour) => (hour * 60 - StartMinute) * PixelsPerMinute;
+    private static double Top(Booking value) => Math.Max(0, (Minutes(value.StartUtc) - StartMinute) * PixelsPerMinute);
+    private static double Height(Booking value) => Math.Max(18, Duration(value) * PixelsPerMinute - 3);
+
+    private static string ParticipantSummary(Booking booking) => booking.Participants.Count == 0 ? "No participants" : $"{booking.Participants.Count} participant{(booking.Participants.Count == 1 ? "" : "s")}";
+
+    private bool CanManage(Booking booking) => isAdmin || booking.CreatedById == currentUserId;
+
+    private void NewBooking()
+    {
+        var roomId = SelectedRoom?.Id ?? 0;
+        OpenNew(roomId, weekStart, 9 * 60, 10 * 60);
+    }
+
+    private void NewBookingOnDay(DateOnly day) => OpenNew(SelectedRoom?.Id ?? 0, day, 9 * 60, 10 * 60);
+
+    private void OpenNew(int roomId, DateOnly date, int start, int end)
+    {
+        editor = new BookingEditorModel { Date = date, StartTime = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(start)), EndTime = TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(end)), RoomIds = roomId == 0 ? [] : [roomId] };
+        editorOpen = true; editorError = null;
+    }
+
+    private async Task EditBooking(Booking booking)
+    {
+        if (!CanManage(booking)) { Toast.Error("Only the organizer or an admin can edit this booking."); return; }
+        editor = await BookingService.GetEditorAsync(booking.Id) ?? new();
+        editorOpen = true; editorError = null;
+    }
+
+    private void CloseEditor() => editorOpen = false;
+
+    private Task OnFilterChangedAsync()
+    {
+        jsReady = false;
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task HandleCalendarAction(string action, int bookingId, int dayOffset, int startMinute, int endMinute)
+    {
+        if (SelectedRoom is null) return;
+        startMinute = Math.Clamp(startMinute, StartMinute, EndMinute - 15);
+        endMinute = Math.Clamp(endMinute, startMinute + 15, EndMinute);
+        dayOffset = Math.Clamp(dayOffset, 0, 6);
+        var date = weekStart.AddDays(dayOffset);
+        if (action == "create") { OpenNew(SelectedRoom.Id, date, startMinute, endMinute); await InvokeAsync(StateHasChanged); return; }
+        var existing = bookings.FirstOrDefault(x => x.Id == bookingId);
+        if (existing is not null && !CanManage(existing)) { Toast.Error("Only the organizer or an admin can move this booking."); await LoadAsync(); await InvokeAsync(StateHasChanged); return; }
+        var start = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(startMinute))), DateTimeKind.Utc);
+        var end = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(endMinute))), DateTimeKind.Utc);
+        var result = await BookingService.MoveAsync(bookingId, SelectedRoom.Id, start, end);
+        if (!result.Succeeded) Toast.Error(result.Error ?? "Could not update booking.");
+        else Toast.Success(action == "resize" ? "Booking duration updated" : "Booking moved");
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveAsync()
+    {
+        saving = true; editorError = null;
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        var userId = UserManager.GetUserId(state.User);
+        if (userId is null) { editorError = "Your session expired."; saving = false; return; }
+        var result = await BookingService.SaveAsync(editor, userId);
+        saving = false;
+        if (!result.Succeeded) { editorError = result.Error; return; }
+        editorOpen = false; Toast.Success("Booking saved"); await LoadAsync();
+    }
+
+    private async Task PreviousWeek() { weekStart = weekStart.AddDays(-7); jsReady = false; await LoadAsync(); }
+    private async Task NextWeek() { weekStart = weekStart.AddDays(7); jsReady = false; await LoadAsync(); }
+    private async Task ThisWeek() { weekStart = StartOfWeek(DateOnly.FromDateTime(DateTime.Today)); jsReady = false; await LoadAsync(); }
+    public ValueTask DisposeAsync() { dotNetRef?.Dispose(); return ValueTask.CompletedTask; }
+}

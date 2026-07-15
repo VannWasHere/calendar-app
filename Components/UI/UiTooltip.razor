@@ -1,0 +1,2 @@
+<span class="ui-tooltip" data-tooltip="@Text">@ChildContent</span>
+@code { [Parameter] public string Text { get; set; } = string.Empty; [Parameter] public RenderFragment? ChildContent { get; set; } }

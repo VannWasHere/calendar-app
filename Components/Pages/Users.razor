@@ -1,0 +1,46 @@
+@page "/users"
+@attribute [Authorize(Roles = "Admin")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ToastService Toast
+
+<PageTitle>People · RoomBook</PageTitle>
+<PageHeader Title="People" Description="Manage workspace members, access, and roles."><Actions><UiButton OnClick="NewUser"><i class="bi bi-plus-lg"></i> Invite user</UiButton></Actions></PageHeader>
+<TableShell>
+    <Toolbar><div class="ui-toolbar"><SearchInput @bind-Value="search" Placeholder="Search people…" /><div class="ui-toolbar-meta"><UiBadge>@Filtered.Count members</UiBadge><select class="ui-filter" @bind="roleFilter"><option value="">All roles</option><option>Admin</option><option>User</option></select></div></div></Toolbar>
+    <ChildContent><thead><tr><th>Member</th><th>Role</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+        @if (Filtered.Count == 0) { <tr><td colspan="4"><EmptyState Icon="bi-people" Title="No people found" Description="Try changing your filters." /></td></tr> }
+        else { @foreach (var user in Paged) { <tr><td><span class="ui-user-cell"><UiAvatar Name="@Name(user)" /><span><strong>@Name(user)</strong><span class="ui-cell-subtitle">@user.Email</span></span></span></td><td><UiBadge Tone="@(Role(user) == "Admin" ? "accent" : "neutral")">@Role(user)</UiBadge></td><td><UiBadge Tone="success">Active</UiBadge></td><td class="ui-row-actions"><button class="ui-icon-button" @onclick="() => EditUser(user)"><i class="bi bi-pencil"></i></button><button class="ui-icon-button destructive" @onclick="() => DeleteAsync(user)"><i class="bi bi-trash"></i></button></td></tr> } }
+    </tbody></ChildContent><Footer><Pagination Page="page" TotalPages="TotalPages" PageChanged="p => page = p" /></Footer>
+</TableShell>
+
+<UiDialog Open="editing" Title="@(form.Id is null ? "Invite user" : "Edit user")" Description="Set profile details and workspace permissions." OnClose="Close">
+    <EditForm Model="form" OnValidSubmit="SaveAsync" class="ui-form"><DataAnnotationsValidator />
+        <div class="ui-field"><label>Full name</label><InputText @bind-Value="form.DisplayName" placeholder="Alex Morgan" /></div><div class="ui-field"><label>Email</label><InputText @bind-Value="form.Email" type="email" placeholder="alex@company.com" /></div><div class="ui-field"><label>Role</label><InputSelect @bind-Value="form.Role"><option>User</option><option>Admin</option></InputSelect></div>
+        @if (form.Id is null) { <div class="ui-field"><label>Temporary password</label><InputText @bind-Value="form.Password" type="password" /></div> }
+        @if (!string.IsNullOrWhiteSpace(error)) { <div class="ui-alert destructive">@error</div> }
+        <div class="ui-form-actions"><UiButton Variant="outline" OnClick="Close">Cancel</UiButton><UiButton Type="submit" Loading="saving">Save user</UiButton></div>
+    </EditForm>
+</UiDialog>
+
+@code {
+    private List<ApplicationUser> users = []; private Dictionary<string,string> roles = []; private UserForm form = new(); private string search="",roleFilter=""; private string? error; private bool editing,saving; private int page=1; private const int PageSize=10;
+    private List<ApplicationUser> Filtered => users.Where(x => (string.IsNullOrWhiteSpace(search) || Name(x).Contains(search,StringComparison.OrdinalIgnoreCase) || (x.Email?.Contains(search,StringComparison.OrdinalIgnoreCase)??false)) && (string.IsNullOrWhiteSpace(roleFilter)||Role(x)==roleFilter)).ToList();
+    private List<ApplicationUser> Paged => Filtered.Skip((page-1)*PageSize).Take(PageSize).ToList(); private int TotalPages=>Math.Max(1,(int)Math.Ceiling(Filtered.Count/(double)PageSize));
+    protected override async Task OnInitializedAsync()=>await LoadAsync();
+    private async Task LoadAsync(){await using var db=await DbFactory.CreateDbContextAsync();users=await db.Users.AsNoTracking().OrderBy(x=>x.DisplayName).ToListAsync();roles=[];foreach(var user in users)roles[user.Id]=(await UserManager.GetRolesAsync(user)).FirstOrDefault()??"User";}
+    private void NewUser(){form=new(){Role="User"};error=null;editing=true;} private void EditUser(ApplicationUser user){form=new(){Id=user.Id,DisplayName=user.DisplayName,Email=user.Email??"",Role=Role(user)};error=null;editing=true;}
+
+    private async Task SaveAsync()
+    {
+        saving=true;error=null;
+        if(string.IsNullOrWhiteSpace(form.Email)||(form.Id is null&&string.IsNullOrWhiteSpace(form.Password))){error="Email and password are required.";saving=false;return;}
+        if(form.Id is null){var user=new ApplicationUser{UserName=form.Email,Email=form.Email,EmailConfirmed=true,DisplayName=form.DisplayName};var result=await UserManager.CreateAsync(user,form.Password!);if(!result.Succeeded){error=string.Join(" ",result.Errors.Select(x=>x.Description));saving=false;return;}await UserManager.AddToRoleAsync(user,form.Role);}
+        else{var user=await UserManager.FindByIdAsync(form.Id);if(user is null)return;user.DisplayName=form.DisplayName;user.Email=form.Email;user.UserName=form.Email;var result=await UserManager.UpdateAsync(user);if(!result.Succeeded){error=string.Join(" ",result.Errors.Select(x=>x.Description));saving=false;return;}var old=await UserManager.GetRolesAsync(user);await UserManager.RemoveFromRolesAsync(user,old);await UserManager.AddToRoleAsync(user,form.Role);}
+        editing=false;saving=false;Toast.Success("User saved");await LoadAsync();
+    }
+    private async Task DeleteAsync(ApplicationUser user){if(user.Id==UserManager.GetUserId((await AuthenticationStateProvider.GetAuthenticationStateAsync()).User)){Toast.Error("You cannot delete your own account.");return;}var result=await UserManager.DeleteAsync(user);if(result.Succeeded)Toast.Success("User deleted");else Toast.Error(string.Join(" ",result.Errors.Select(x=>x.Description)));await LoadAsync();}
+    private void Close()=>editing=false;private string Role(ApplicationUser user)=>roles.GetValueOrDefault(user.Id,"User");private static string Name(ApplicationUser user)=>string.IsNullOrWhiteSpace(user.DisplayName)?user.Email??"User":user.DisplayName;
+    private sealed class UserForm{public string? Id{get;set;}public string DisplayName{get;set;}="";public string Email{get;set;}="";public string Role{get;set;}="User";public string? Password{get;set;}}
+}

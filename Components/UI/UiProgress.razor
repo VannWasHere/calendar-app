@@ -1,0 +1,2 @@
+<div class="ui-progress" role="progressbar" aria-valuenow="@Value" aria-valuemin="0" aria-valuemax="100"><span style="width:@Math.Clamp(Value,0,100)%"></span></div>
+@code { [Parameter] public int Value { get; set; } }

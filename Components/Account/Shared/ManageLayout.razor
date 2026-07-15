@@ -1,0 +1,9 @@
+﻿@inherits LayoutComponentBase
+@layout RoomBook.Components.Layout.MainLayout
+
+<PageHeader Title="Account settings" Description="Manage your profile, security, and sign-in methods." />
+
+<div class="settings-layout">
+    <aside class="settings-nav"><ManageNavMenu /></aside>
+    <section class="settings-content"><UiCard><ChildContent>@Body</ChildContent></UiCard></section>
+</div>

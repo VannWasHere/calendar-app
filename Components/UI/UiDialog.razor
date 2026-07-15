@@ -1,0 +1,21 @@
+@if (Open)
+{
+    <div class="ui-overlay" role="presentation" @onclick="Close">
+        <section class="ui-dialog @Size" role="dialog" aria-modal="true" aria-labelledby="dialog-title" @onclick:stopPropagation>
+            <header class="ui-dialog-header"><div><h2 id="dialog-title">@Title</h2>@if (!string.IsNullOrWhiteSpace(Description)) { <p>@Description</p> }</div><button class="ui-icon-button" aria-label="Close" @onclick="Close"><i class="bi bi-x-lg"></i></button></header>
+            <div class="ui-dialog-body">@ChildContent</div>
+            @if (Footer is not null) { <footer class="ui-dialog-footer">@Footer</footer> }
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    private Task Close() => OnClose.InvokeAsync();
+}

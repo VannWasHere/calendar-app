@@ -1,0 +1,84 @@
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@implements IDisposable
+
+<div class="ui-multiselect">
+    <button type="button" class="ui-combobox-trigger" @onclick="Open"><span>@(Values.Count == 0 ? "Add participants" : $"{Values.Count} selected")</span><span>⌄</span></button>
+    @if (open)
+    {
+        <div class="ui-command"><label class="ui-command-search"><span>⌕</span><input value="@query" @oninput="SearchChanged" placeholder="Search name or email…" autofocus /></label>
+            <div class="ui-command-list">
+                @if (loading) { @for (var i = 0; i < 3; i++) { <div class="ui-command-skeleton"><Skeleton Height="2.25rem" /></div> } }
+                else if (options.Count == 0) { <div class="ui-command-empty">No users found.</div> }
+                else { @foreach (var user in options) { var selected = Values.Contains(user.Id); <button type="button" class="ui-command-item" @onclick="() => Toggle(user)"><span class="ui-check">@(selected ? "✓" : "")</span><UiAvatar Name="@DisplayName(user)" Size="sm" /><span><strong>@DisplayName(user)</strong><small>@user.Email</small></span></button> } }
+            </div>
+        </div>
+    }
+    @if (selectedUsers.Count > 0) { <div class="ui-chips">@foreach (var user in selectedUsers) { <span class="ui-chip"><UiAvatar Name="@DisplayName(user)" Size="xs" />@DisplayName(user)<button type="button" @onclick="() => Toggle(user)">×</button></span> }</div> }
+</div>
+
+@code {
+    [Parameter] public List<string> Values { get; set; } = [];
+    [Parameter] public EventCallback<List<string>> ValuesChanged { get; set; }
+    private List<ApplicationUser> options = [];
+    private List<ApplicationUser> selectedUsers = [];
+    private CancellationTokenSource? searchCts;
+    private string query = string.Empty;
+    private bool open;
+    private bool loading;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync(string.Empty);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Values.Count == 0) { selectedUsers = []; return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        selectedUsers = await db.Users.AsNoTracking().Where(x => Values.Contains(x.Id)).OrderBy(x => x.DisplayName).ToListAsync();
+    }
+
+    private async Task Open()
+    {
+        open = !open;
+        if (open && options.Count == 0) await LoadAsync(string.Empty);
+    }
+
+    private async Task SearchChanged(ChangeEventArgs args)
+    {
+        query = args.Value?.ToString() ?? string.Empty;
+        searchCts?.Cancel();
+        searchCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, searchCts.Token);
+            await LoadAsync(query, searchCts.Token);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task LoadAsync(string search, CancellationToken token = default)
+    {
+        loading = true;
+        await InvokeAsync(StateHasChanged);
+        await using var db = await DbFactory.CreateDbContextAsync(token);
+        var users = db.Users.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = $"%{search.Trim()}%";
+            users = users.Where(x => EF.Functions.ILike(x.DisplayName, term) || (x.Email != null && EF.Functions.ILike(x.Email, term)));
+        }
+        options = await users.OrderBy(x => x.DisplayName).ThenBy(x => x.Email).Take(10).ToListAsync(token);
+        loading = false;
+    }
+
+    private async Task Toggle(ApplicationUser user)
+    {
+        var copy = Values.ToList();
+        if (!copy.Remove(user.Id)) copy.Add(user.Id);
+        await ValuesChanged.InvokeAsync(copy);
+        Values = copy;
+        if (copy.Contains(user.Id) && selectedUsers.All(x => x.Id != user.Id)) selectedUsers.Add(user);
+        else if (!copy.Contains(user.Id)) selectedUsers.RemoveAll(x => x.Id == user.Id);
+    }
+
+    private static string DisplayName(ApplicationUser user) => string.IsNullOrWhiteSpace(user.DisplayName) ? user.Email ?? "User" : user.DisplayName;
+    public void Dispose() => searchCts?.Cancel();
+}

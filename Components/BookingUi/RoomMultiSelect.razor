@@ -1,0 +1,13 @@
+<div class="ui-multiselect">
+    <button type="button" class="ui-combobox-trigger" @onclick="() => open = !open"><span>@Summary</span><span>⌄</span></button>
+    @if (open) { <div class="ui-command"><div class="ui-command-list">@foreach (var room in Rooms) { var selected = Values.Contains(room.Id); <button type="button" class="ui-command-item" @onclick="() => Toggle(room.Id)"><span class="ui-check">@(selected ? "✓" : "")</span><span><strong>@room.Name</strong><small>@room.Location · @room.Capacity seats</small></span></button> }</div></div> }
+    @if (Values.Count > 0) { <div class="ui-chips">@foreach (var room in Rooms.Where(x => Values.Contains(x.Id))) { <span class="ui-chip">@room.Name<button type="button" aria-label="Remove @room.Name" @onclick="() => Toggle(room.Id)">×</button></span> }</div> }
+</div>
+@code {
+    [Parameter] public IReadOnlyList<Room> Rooms { get; set; } = [];
+    [Parameter] public List<int> Values { get; set; } = [];
+    [Parameter] public EventCallback<List<int>> ValuesChanged { get; set; }
+    private bool open;
+    private string Summary => Values.Count == 0 ? "Select rooms" : $"{Values.Count} room{(Values.Count == 1 ? "" : "s")} selected";
+    private async Task Toggle(int id) { var copy = Values.ToList(); if (!copy.Remove(id)) copy.Add(id); await ValuesChanged.InvokeAsync(copy); }
+}

@@ -1,0 +1,2 @@
+<details class="ui-accordion" open="@Open"><summary>@Title<span><i class="bi bi-chevron-down"></i></span></summary><div>@ChildContent</div></details>
+@code { [Parameter] public string Title { get; set; } = string.Empty; [Parameter] public bool Open { get; set; } [Parameter] public RenderFragment? ChildContent { get; set; } }

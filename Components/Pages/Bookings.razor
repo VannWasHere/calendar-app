@@ -1,0 +1,118 @@
+@page "/bookings"
+@attribute [Authorize]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthenticationState
+@inject UserManager<ApplicationUser> UserManager
+@inject BookingService BookingService
+@inject ToastService Toast
+
+<PageTitle>Bookings · RoomBook</PageTitle>
+<PageHeader Title="Bookings" Description="Search, schedule, and manage every reservation.">
+    <Actions><UiButton OnClick="NewBooking"><i class="bi bi-plus-lg"></i> New booking</UiButton></Actions>
+</PageHeader>
+
+<TableShell>
+    <Toolbar><div class="ui-toolbar"><SearchInput @bind-Value="search" Placeholder="Search bookings…" /><div class="ui-toolbar-meta"><UiBadge Tone="neutral">@totalCount bookings</UiBadge><a class="ui-button outline sm" href="calendar"><i class="bi bi-calendar3"></i> Calendar view</a></div></div></Toolbar>
+    <ChildContent>
+        <thead><tr><th><button class="ui-sort" @onclick="() => SortBy(nameof(Booking.StartUtc))">Date & time @SortMark(nameof(Booking.StartUtc))</button></th><th>Booking</th><th>Rooms</th><th>Participants</th><th>Owner</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+            @if (loading) { @for (var i = 0; i < 5; i++) { <tr><td colspan="6"><Skeleton Height="2.5rem" /></td></tr> } }
+            else if (PagedBookings.Count == 0) { <tr><td colspan="6"><EmptyState Icon="bi-search" Title="No bookings found" Description="Try another search or create a booking." /></td></tr> }
+            else { @foreach (var booking in PagedBookings) { <tr>
+                <td><div class="ui-date-cell"><strong>@booking.StartUtc.ToString("ddd, dd MMM")</strong><span>@booking.StartUtc.ToString("HH:mm")–@booking.EndUtc.ToString("HH:mm")</span></div></td>
+                <td><strong>@booking.Title</strong><span class="ui-cell-subtitle">@(booking.Notes ?? "No description")</span></td>
+                <td><div class="ui-badge-row"><UiBadge Tone="accent">@booking.Room.Name</UiBadge>@foreach (var extra in booking.AdditionalRooms.Take(1)) { <UiBadge>@extra.Room.Name</UiBadge> }@if (booking.AdditionalRooms.Count > 1) { <UiBadge>+@(booking.AdditionalRooms.Count - 1)</UiBadge> }</div></td>
+                <td><div class="ui-avatar-stack">@foreach (var person in booking.Participants.Take(3)) { <UiAvatar Name="@PersonName(person.User)" Size="sm" /> }@if (booking.Participants.Count == 0) { <span class="ui-cell-subtitle">None</span> }</div></td>
+                <td><span class="ui-user-cell"><UiAvatar Name="@PersonName(booking.CreatedBy)" Size="sm" /><span>@PersonName(booking.CreatedBy)</span></span></td>
+                <td class="ui-row-actions">@if (CanManage(booking)) { <button class="ui-icon-button" title="Edit" @onclick="() => EditBooking(booking.Id)"><i class="bi bi-pencil"></i></button><button class="ui-icon-button destructive" title="Delete" @onclick="() => ConfirmDelete(booking)"><i class="bi bi-trash"></i></button> }</td>
+            </tr> } }
+        </tbody>
+    </ChildContent>
+    <Footer><Pagination Page="page" TotalPages="TotalPages" PageChanged="ChangePage" /></Footer>
+</TableShell>
+
+<UiDialog Open="editorOpen" Title="@(editor.Id == 0 ? "New booking" : "Edit booking")" Description="Times use 15-minute increments. Conflicts are checked before saving." Size="lg" OnClose="CloseEditor">
+    <BookingForm Model="editor" Rooms="rooms" Saving="saving" Error="editorError" OnSubmit="SaveAsync" OnCancel="CloseEditor" />
+</UiDialog>
+
+<UiDialog Open="deleteOpen" Title="Delete booking?" Description="This action cannot be undone." OnClose="CancelDelete">
+    <p class="ui-dialog-copy">“@deleteTarget?.Title” will be permanently removed.</p>
+    <div class="ui-form-actions"><UiButton Variant="outline" OnClick="CancelDelete">Cancel</UiButton><UiButton Variant="destructive" OnClick="DeleteAsync">Delete booking</UiButton></div>
+</UiDialog>
+
+@code {
+    private List<Booking> bookings = [];
+    private List<Room> rooms = [];
+    private BookingEditorModel editor = new();
+    private Booking? deleteTarget;
+    private string search = string.Empty;
+    private string sort = nameof(Booking.StartUtc);
+    private bool ascending = true;
+    private bool loading = true;
+    private bool editorOpen;
+    private bool deleteOpen;
+    private bool saving;
+    private string? editorError;
+    private int page = 1;
+    private const int PageSize = 10;
+    private string? currentUserId;
+    private bool isAdmin;
+    private int totalCount => FilteredBookings.Count;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
+    private List<Booking> FilteredBookings => bookings.Where(x => string.IsNullOrWhiteSpace(search) || x.Title.Contains(search, StringComparison.OrdinalIgnoreCase) || x.Room.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || (x.CreatedBy.Email?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)).OrderBy(x => sort == nameof(Booking.Title) ? (object)x.Title : x.StartUtc).ToList();
+    private List<Booking> PagedBookings => (ascending ? FilteredBookings : FilteredBookings.AsEnumerable().Reverse()).Skip((page - 1) * PageSize).Take(PageSize).ToList();
+    private bool CanManage(Booking booking) => isAdmin || booking.CreatedById == currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        currentUserId = UserManager.GetUserId(state.User);
+        isAdmin = state.User.IsInRole("Admin");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        rooms = await db.Rooms.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync();
+        bookings = await db.Bookings.AsNoTracking().AsSplitQuery().Include(x => x.Room).Include(x => x.CreatedBy)
+            .Include(x => x.AdditionalRooms).ThenInclude(x => x.Room).Include(x => x.Participants).ThenInclude(x => x.User)
+            .OrderBy(x => x.StartUtc).ToListAsync();
+        loading = false;
+    }
+
+    private void NewBooking() { editor = new(); editorOpen = true; editorError = null; }
+    private async Task EditBooking(int id) { var booking = bookings.FirstOrDefault(x => x.Id == id); if (booking is not null && !CanManage(booking)) return; editor = await BookingService.GetEditorAsync(id) ?? new(); editorOpen = true; editorError = null; }
+    private void CloseEditor() => editorOpen = false;
+
+    private async Task SaveAsync()
+    {
+        saving = true; editorError = null;
+        var state = await AuthenticationState.GetAuthenticationStateAsync();
+        var userId = UserManager.GetUserId(state.User);
+        if (userId is null) { editorError = "Your session expired. Sign in again."; saving = false; return; }
+        var result = await BookingService.SaveAsync(editor, userId);
+        saving = false;
+        if (!result.Succeeded) { editorError = result.Error; return; }
+        editorOpen = false;
+        Toast.Success(editor.Id == 0 ? "Booking created" : "Booking updated");
+        await LoadAsync();
+    }
+
+    private void ConfirmDelete(Booking booking) { if (!CanManage(booking)) return; deleteTarget = booking; deleteOpen = true; }
+    private void CancelDelete() => deleteOpen = false;
+    private async Task DeleteAsync()
+    {
+        if (deleteTarget is null) return;
+        await BookingService.DeleteAsync(deleteTarget.Id);
+        deleteOpen = false;
+        Toast.Success("Booking deleted");
+        await LoadAsync();
+    }
+
+    private void SortBy(string column) { if (sort == column) ascending = !ascending; else { sort = column; ascending = true; } }
+    private string SortMark(string column) => sort == column ? (ascending ? "↑" : "↓") : "↕";
+    private void ChangePage(int value) => page = Math.Clamp(value, 1, TotalPages);
+    private static string PersonName(ApplicationUser user) => string.IsNullOrWhiteSpace(user.DisplayName) ? user.Email ?? "User" : user.DisplayName;
+}

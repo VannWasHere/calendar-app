@@ -1,0 +1,8 @@
+<div class="ui-pagination"><span>Page @Page of @TotalPages</span><div><UiButton Variant="outline" Size="sm" Disabled="@(Page <= 1)" OnClick="Previous">Previous</UiButton><UiButton Variant="outline" Size="sm" Disabled="@(Page >= TotalPages)" OnClick="Next">Next</UiButton></div></div>
+@code {
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int TotalPages { get; set; } = 1;
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    private Task Previous() => PageChanged.InvokeAsync(Page - 1);
+    private Task Next() => PageChanged.InvokeAsync(Page + 1);
+}

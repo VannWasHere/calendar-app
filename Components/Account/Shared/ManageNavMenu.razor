@@ -1,0 +1,26 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using RoomBook.Data
+
+@inject SignInManager<ApplicationUser> SignInManager
+
+<nav class="settings-nav-list">
+    <NavLink href="Account/Manage" Match="NavLinkMatch.All"><i class="bi bi-person"></i> Profile</NavLink>
+    <NavLink href="Account/Manage/Email"><i class="bi bi-envelope"></i> Email</NavLink>
+    <NavLink href="Account/Manage/ChangePassword"><i class="bi bi-key"></i> Password</NavLink>
+    @if (hasExternalLogins)
+    {
+        <NavLink href="Account/Manage/ExternalLogins"><i class="bi bi-link-45deg"></i> External logins</NavLink>
+    }
+    <NavLink href="Account/Manage/TwoFactorAuthentication"><i class="bi bi-shield-check"></i> Two-factor authentication</NavLink>
+    <NavLink href="Account/Manage/Passkeys"><i class="bi bi-fingerprint"></i> Passkeys</NavLink>
+    <NavLink href="Account/Manage/PersonalData"><i class="bi bi-file-earmark-text"></i> Personal data</NavLink>
+</nav>
+
+@code {
+    private bool hasExternalLogins;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
+    }
+}

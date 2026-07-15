@@ -1,0 +1,12 @@
+<section class="ui-card @Class">
+    @if (Header is not null) { <header class="ui-card-header">@Header</header> }
+    <div class="ui-card-content">@ChildContent</div>
+    @if (Footer is not null) { <footer class="ui-card-footer">@Footer</footer> }
+</section>
+
+@code {
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

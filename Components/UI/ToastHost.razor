@@ -1,0 +1,11 @@
+@implements IDisposable
+@inject ToastService ToastService
+
+<div class="ui-toast-region" aria-live="polite">@foreach (var toast in toasts) { <div class="ui-toast @toast.Tone"><span><i class="bi @(toast.Tone == "success" ? "bi-check-lg" : toast.Tone == "error" ? "bi-exclamation-lg" : "bi-info-lg")"></i></span><p>@toast.Text</p><button @onclick="() => Remove(toast)"><i class="bi bi-x"></i></button></div> }</div>
+@code {
+    private readonly List<ToastMessage> toasts = [];
+    protected override void OnInitialized() => ToastService.OnShow += Show;
+    private async void Show(ToastMessage toast) { toasts.Add(toast); await InvokeAsync(StateHasChanged); await Task.Delay(4000); Remove(toast); }
+    private async void Remove(ToastMessage toast) { toasts.Remove(toast); await InvokeAsync(StateHasChanged); }
+    public void Dispose() => ToastService.OnShow -= Show;
+}

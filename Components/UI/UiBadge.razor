@@ -1,0 +1,5 @@
+<span class="ui-badge @Tone">@ChildContent</span>
+@code {
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

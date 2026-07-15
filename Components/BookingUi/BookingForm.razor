@@ -1,0 +1,43 @@
+@inject BookingService BookingService
+<EditForm Model="Model" OnValidSubmit="Submit" class="ui-form"><DataAnnotationsValidator /><ValidationSummary class="ui-form-summary" />
+    <div class="ui-field"><label>Title</label><InputText @bind-Value="Model.Title" placeholder="Weekly planning" /><ValidationMessage For="() => Model.Title" /></div>
+    <div class="ui-form-grid"><div class="ui-field"><label>Date</label><InputDate @bind-Value="Model.Date" @bind-Value:after="CheckConflictAsync" /></div><div class="ui-field"><label>Start</label><InputDate @bind-Value="Model.StartTime" Type="InputDateType.Time" step="900" @bind-Value:after="CheckConflictAsync" /></div><div class="ui-field"><label>End</label><InputDate @bind-Value="Model.EndTime" Type="InputDateType.Time" step="900" @bind-Value:after="CheckConflictAsync" /></div></div>
+    <div class="ui-field"><label>Rooms</label><RoomMultiSelect Rooms="Rooms" Values="Model.RoomIds" ValuesChanged="RoomsChanged" /><ValidationMessage For="() => Model.RoomIds" /></div>
+    @if (!string.IsNullOrWhiteSpace(conflictWarning)) { <div class="ui-alert destructive" role="alert"><strong><i class="bi bi-exclamation-triangle"></i> Room already booked</strong><span>@conflictWarning</span></div> }
+    <div class="ui-field"><label>Participants</label><ParticipantMultiSelect Values="Model.ParticipantIds" ValuesChanged="ParticipantsChanged" /><span class="ui-field-hint">Search loads 10 people first, then queries all users as you type.</span></div>
+    <div class="ui-field"><label>Description <span>Optional</span></label><InputTextArea @bind-Value="Model.Description" placeholder="Add agenda, call link, or context…" /><ValidationMessage For="() => Model.Description" /></div>
+    @if (!string.IsNullOrWhiteSpace(Error)) { <div class="ui-alert destructive" role="alert"><strong>Couldn’t save booking</strong><span>@Error</span></div> }
+    <div class="ui-form-actions"><UiButton Variant="outline" OnClick="Cancel">Cancel</UiButton><UiButton Type="submit" Loading="Saving" Disabled="@(!string.IsNullOrWhiteSpace(conflictWarning))">@(Model.Id == 0 ? "Create booking" : "Save changes")</UiButton></div>
+</EditForm>
+@code {
+    [Parameter, EditorRequired] public BookingEditorModel Model { get; set; } = new();
+    [Parameter] public IReadOnlyList<Room> Rooms { get; set; } = [];
+    [Parameter] public bool Saving { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    private string? conflictWarning;
+    private CancellationTokenSource? checkCts;
+
+    protected override Task OnParametersSetAsync() => CheckConflictAsync();
+
+    private Task Submit() => OnSubmit.InvokeAsync();
+    private Task Cancel() => OnCancel.InvokeAsync();
+    private async Task RoomsChanged(List<int> values) { Model.RoomIds = values; await CheckConflictAsync(); }
+    private void ParticipantsChanged(List<string> values) => Model.ParticipantIds = values;
+
+    private async Task CheckConflictAsync()
+    {
+        checkCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        checkCts = cts;
+        try
+        {
+            await Task.Delay(250, cts.Token);
+            if (Model.RoomIds.Count == 0 || Model.EndTime <= Model.StartTime) { conflictWarning = null; await InvokeAsync(StateHasChanged); return; }
+            conflictWarning = await BookingService.CheckConflictAsync(Model.Id, Model.RoomIds, Model.StartUtc, Model.EndUtc);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+}

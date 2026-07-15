@@ -1,0 +1,7 @@
+<div class="ui-empty"><div class="ui-empty-icon"><i class="bi @Icon"></i></div><h3>@Title</h3><p>@Description</p>@ChildContent</div>
+@code {
+    [Parameter] public string Icon { get; set; } = "bi-inbox";
+    [Parameter] public string Title { get; set; } = "Nothing here";
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

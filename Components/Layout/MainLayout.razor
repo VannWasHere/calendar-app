@@ -1,0 +1,16 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JS
+
+<div class="app-shell">
+    <aside class="app-sidebar" id="app-sidebar"><NavMenu /></aside>
+    <div class="app-workspace">
+        <header class="app-topbar"><button class="ui-icon-button mobile-menu" aria-label="Open navigation" @onclick="ToggleMenu"><i class="bi bi-list"></i></button><button class="command-trigger" @onclick="OpenCommand"><i class="bi bi-search"></i><span>Search or jump to…</span><kbd>⌘ K</kbd></button><div class="topbar-actions"><ThemeToggle /><a class="ui-icon-button" href="/bookings" title="Notifications"><i class="bi bi-bell"></i></a><AuthorizeView><Authorized><a href="Account/Manage"><UiAvatar Name="@context.User.Identity?.Name" Size="sm" /></a></Authorized></AuthorizeView></div></header>
+        <main class="app-content"><article>@Body</article></main>
+    </div>
+</div>
+<CommandPalette /><ToastHost />
+<div id="blazor-error-ui" data-nosnippet>Something went wrong. <a href="." class="reload">Reload</a><span class="dismiss">×</span></div>
+@code {
+    private async Task ToggleMenu() => await JS.InvokeVoidAsync("roomBook.toggleMenu");
+    private async Task OpenCommand() => await JS.InvokeVoidAsync("roomBook.command.open");
+}

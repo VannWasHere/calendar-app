@@ -1,0 +1,51 @@
+@page "/rooms"
+@attribute [Authorize]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject ToastService Toast
+@inject AuthenticationStateProvider AuthenticationState
+
+<PageTitle>Rooms · RoomBook</PageTitle>
+<PageHeader Title="Rooms" Description="Manage spaces, capacity, and booking availability."><Actions><AuthorizeView Roles="Admin"><Authorized><UiButton OnClick="NewRoom"><i class="bi bi-plus-lg"></i> Add room</UiButton></Authorized></AuthorizeView></Actions></PageHeader>
+
+<div class="metric-grid room-metrics"><UiCard Class="metric-card"><span class="metric-icon violet"><i class="bi bi-door-open"></i></span><div><span>Total rooms</span><strong>@rooms.Count</strong><small>All spaces</small></div></UiCard><UiCard Class="metric-card"><span class="metric-icon green"><i class="bi bi-check-circle"></i></span><div><span>Available</span><strong>@rooms.Count(x => x.IsActive)</strong><small>Open for booking</small></div></UiCard></div>
+<TableShell>
+    <Toolbar><div class="ui-toolbar"><SearchInput @bind-Value="search" Placeholder="Search rooms…" /><UiBadge Tone="neutral">@Filtered.Count results</UiBadge></div></Toolbar>
+    <ChildContent><thead><tr><th>Room</th><th>Type</th><th>Location</th><th>Capacity</th><th>Status</th><AuthorizeView Roles="Admin"><Authorized><th><span class="sr-only">Actions</span></th></Authorized></AuthorizeView></tr></thead><tbody>
+        @if (Filtered.Count == 0) { <tr><td colspan="6"><EmptyState Icon="bi-door-open" Title="No rooms found" Description="Add a room or change your search." /></td></tr> }
+        else { @foreach (var room in Filtered) { <tr><td><span class="ui-user-cell"><span class="room-icon"><i class="bi bi-door-open"></i></span><strong>@room.Name</strong></span></td><td><UiBadge Tone="accent">@room.Type</UiBadge></td><td>@(room.Location ?? "Not set")</td><td>@room.Capacity people</td><td><UiBadge Tone="@(room.IsActive ? "success" : "neutral")">@(room.IsActive ? "Available" : "Inactive")</UiBadge></td><AuthorizeView Roles="Admin"><Authorized><td class="ui-row-actions"><button class="ui-icon-button" @onclick="() => EditRoom(room)"><i class="bi bi-pencil"></i></button><button class="ui-icon-button destructive" @onclick="() => DeleteAsync(room)"><i class="bi bi-trash"></i></button></td></Authorized></AuthorizeView></tr> } }
+    </tbody></ChildContent>
+</TableShell>
+
+<UiDialog Open="editing" Title="@(form.Id == 0 ? "Add room" : "Edit room")" Description="Set room details and booking availability." OnClose="Close">
+    <EditForm Model="form" OnValidSubmit="SaveAsync" class="ui-form"><DataAnnotationsValidator /><ValidationSummary class="ui-form-summary" />
+        <div class="ui-field"><label>Room name</label><InputText @bind-Value="form.Name" placeholder="Boardroom" /><ValidationMessage For="() => form.Name" /></div>
+        <div class="ui-field"><label>Room type</label><InputText @bind-Value="form.Type" placeholder="Meeting Room, Conference Hall, Studio…" /><ValidationMessage For="() => form.Type" /></div>
+        <div class="ui-field"><label>Location</label><InputText @bind-Value="form.Location" placeholder="Floor 2, West wing" /></div>
+        <div class="ui-field"><label>Capacity</label><InputNumber @bind-Value="form.Capacity" /><ValidationMessage For="() => form.Capacity" /></div>
+        <label class="ui-switch"><InputCheckbox @bind-Value="form.IsActive" /><span></span><div><strong>Available for booking</strong><small>Team members can select this room.</small></div></label>
+        @if (!string.IsNullOrWhiteSpace(error)) { <div class="ui-alert destructive">@error</div> }
+        <div class="ui-form-actions"><UiButton Variant="outline" OnClick="Close">Cancel</UiButton><UiButton Type="submit" Loading="saving">Save room</UiButton></div>
+    </EditForm>
+</UiDialog>
+
+@code {
+    private List<Room> rooms = []; private Room form = new(); private string search = ""; private string? error; private bool editing, saving;
+    private List<Room> Filtered => rooms.Where(x => string.IsNullOrWhiteSpace(search) || x.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || (x.Location?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { await using var db = await DbFactory.CreateDbContextAsync(); rooms = await db.Rooms.AsNoTracking().OrderBy(x => x.Name).ToListAsync(); }
+    private async Task<bool> IsAdminAsync() => (await AuthenticationState.GetAuthenticationStateAsync()).User.IsInRole("Admin");
+    private async Task NewRoom() { if (!await IsAdminAsync()) return; form = new Room { IsActive = true, Capacity = 4, Type = "Meeting Room" }; error = null; editing = true; }
+    private async Task EditRoom(Room room) { if (!await IsAdminAsync()) return; form = new Room { Id = room.Id, Name = room.Name, Type = room.Type, Location = room.Location, Capacity = room.Capacity, IsActive = room.IsActive }; error = null; editing = true; }
+
+    private async Task SaveAsync()
+    {
+        if (!await IsAdminAsync()) { error = "Only administrators can modify rooms."; return; }
+        saving = true; error = null; await using var db = await DbFactory.CreateDbContextAsync();
+        if (form.Id == 0) db.Rooms.Add(form); else { var room = await db.Rooms.FindAsync(form.Id); if (room is null) return; room.Name = form.Name; room.Type = form.Type; room.Location = form.Location; room.Capacity = form.Capacity; room.IsActive = form.IsActive; }
+        try { await db.SaveChangesAsync(); editing = false; Toast.Success("Room saved"); await LoadAsync(); }
+        catch (DbUpdateException) { error = "A room with this name already exists."; }
+        finally { saving = false; }
+    }
+    private async Task DeleteAsync(Room room) { if (!await IsAdminAsync()) { Toast.Error("Only administrators can delete rooms."); return; } await using var db = await DbFactory.CreateDbContextAsync(); if (await db.Bookings.AnyAsync(x => x.RoomId == room.Id || x.AdditionalRooms.Any(r => r.RoomId == room.Id))) { Toast.Error("This room has bookings and cannot be deleted."); return; } db.Rooms.Remove(room); await db.SaveChangesAsync(); Toast.Success("Room deleted"); await LoadAsync(); }
+    private void Close() => editing = false;
+}

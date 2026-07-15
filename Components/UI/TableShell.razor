@@ -1,0 +1,10 @@
+<section class="ui-table-shell">
+    @if (Toolbar is not null) { <div class="ui-table-toolbar">@Toolbar</div> }
+    <div class="ui-table-scroll"><table class="ui-table">@ChildContent</table></div>
+    @if (Footer is not null) { <footer class="ui-table-footer">@Footer</footer> }
+</section>
+@code {
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+}
